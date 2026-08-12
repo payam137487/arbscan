@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ArbScan</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#08111f;color:#fff}
+.container{max-width:1100px;margin:auto;padding:25px}
+header{display:flex;justify-content:space-between;align-items:center;padding:15px 0}
+.logo{font-size:30px;font-weight:bold}
+.status{color:#55e58a}
+.card{background:#111d30;border:1px solid #26364f;border-radius:18px;padding:22px;margin-top:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px}
+.box{background:#0b1627;padding:20px;border-radius:14px}
+.number{font-size:28px;font-weight:bold}
+.small{color:#8d9ab0;font-size:13px}
+table{width:100%;border-collapse:collapse;margin-top:15px}
+th,td{text-align:right;padding:14px;border-bottom:1px solid #26364f}
+th{color:#8d9ab0}
+.green{color:#55e58a}
+button{background:#2563eb;color:white;border:0;padding:12px 20px;border-radius:10px;cursor:pointer}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<div class="logo">ArbScan</div>
+<div class="status">● آنلاین</div>
+</header>
+
+<div class="card">
+<h1>داشبورد آربیتراژ</h1>
+<p class="small">بررسی فرصت‌های آربیتراژ ورزشی</p>
+</div>
+
+<div class="grid">
+
+<div class="box">
+<div class="small">فرصت‌های امروز</div>
+<div class="number">0</div>
+</div>
+
+<div class="box">
+<div class="small">فوتبال</div>
+<div class="number">⚽</div>
+</div>
+
+<div class="box">
+<div class="small">بسکتبال</div>
+<div class="number">🏀</div>
+</div>
+
+<div class="box">
+<div class="small">هاکی</div>
+<div class="number">🏒</div>
+</div>
+
+</div>
+
+<div class="card">
+
+<h2>فرصت‌های آربیتراژ</h2>
+
+<table>
+<thead>
+<tr>
+<th>ورزش</th>
+<th>مسابقه</th>
+<th>ضریب</th>
+<th>بازده</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>⚽ فوتبال</td>
+<td>نمونه مسابقه</td>
+<td>—</td>
+<td class="green">در انتظار داده</td>
+</tr>
+</tbody>
+
+</table>
+
+</div>
+
+<div class="card">
+<button onclick="location.reload()">به‌روزرسانی</button>
+</div>
+
+</div>
+
+</body>
+</html>
+
