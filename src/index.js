@@ -84,6 +84,7 @@ export default {
 
       const events = await response.json();
       const opportunities = [];
+      const receivedBookmakers = [...new Set((events || []).flatMap(e => (e.bookmakers || []).map(b => b.key)))];
 
       for (const event of events) {
         const best = {};
