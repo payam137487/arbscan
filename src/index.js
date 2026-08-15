@@ -1,4 +1,4 @@
-import { findArb } from "./lib/arbitrage.mjs";
+import { findArb } from "./lib/arbitrage.js";
 
 export default {
   async fetch(request) {
