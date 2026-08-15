@@ -1,9 +1,36 @@
-import { findArb } from "./lib/arbitrage.js";
+const API_BASE = "https://api.the-odds-api.com/v4";
 
-const API_BASE = "https://api.odds-api.io/v3";
+const SPORTS = {
+  football: "soccer",
+  basketball: "basketball_nba",
+  ice_hockey: "icehockey_nhl",
+  handball: "handball"
+};
+
+function findArb(odds) {
+  if (!Array.isArray(odds) || odds.length < 2) return null;
+
+  const valid = odds.filter((x) => Number.isFinite(Number(x)) && Number(x) > 1);
+  if (valid.length !== odds.length) return null;
+
+  const inv = valid.reduce((sum, odd) => sum + 1 / Number(odd), 0);
+
+  if (inv >= 1) return null;
+
+  return {
+    margin: Number((1 - inv).toFixed(4)),
+    profit: Number(((1 / inv - 1) * 100).toFixed(2))
+  };
+}
 
 function json(data, status = 200) {
-  return Response.json(data, { status });
+  return new Response(JSON.stringify(data, null, 2), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=UTF-8",
+      "cache-control": "no-store"
+    }
+  });
 }
 
 export default {
@@ -25,151 +52,222 @@ export default {
         }, 500);
       }
 
-      try {
-        const eventsUrl = new URL(`${API_BASE}/events`);
-        eventsUrl.searchParams.set("apiKey", env.ODDS_API_KEY);
-        eventsUrl.searchParams.set("sport", "football");
-        eventsUrl.searchParams.set("status", "pending");
-        eventsUrl.searchParams.set("limit", "10");
+      const sport = url.searchParams.get("sport") || "football";
+      const sportKey = SPORTS[sport];
 
-        const eventsRes = await fetch(eventsUrl);
+      if (!sportKey) {
+        return json({
+          ok: false,
+          error: "Unsupported sport",
+          supported: Object.keys(SPORTS)
+        }, 400);
+      }
 
-        if (!eventsRes.ok) {
-          return json({
-            ok: false,
-            error: "Failed to fetch events",
-            status: eventsRes.status
-          }, 502);
-        }
+      const apiUrl = new URL(
+        `${API_BASE}/sports/${sportKey}/odds`
+      );
 
-        const events = await eventsRes.json();
+      apiUrl.searchParams.set("apiKey", env.ODDS_API_KEY);
+      apiUrl.searchParams.set("regions", "eu");
+      apiUrl.searchParams.set("markets", "h2h");
+      apiUrl.searchParams.set("oddsFormat", "decimal");
 
-        const results = [];
+      const response = await fetch(apiUrl);
 
-        for (const event of events) {
-          const oddsUrl = new URL(`${API_BASE}/odds`);
-          oddsUrl.searchParams.set("apiKey", env.ODDS_API_KEY);
-          oddsUrl.searchParams.set("eventId", event.id);
-          oddsUrl.searchParams.set("bookmakers", "1xbet,Vbet");
+      if (!response.ok) {
+        return json({
+          ok: false,
+          error: "The Odds API request failed",
+          status: response.status
+        }, 502);
+      }
 
-          const oddsRes = await fetch(oddsUrl);
+      const events = await response.json();
+      const opportunities = [];
 
-          if (!oddsRes.ok) continue;
+      for (const event of events) {
+        const best = {};
 
-          const data = await oddsRes.json();
-          const bookmakers = data.bookmakers || {};
+        for (const bookmaker of event.bookmakers || []) {
+          const key = String(bookmaker.key || "").toLowerCase();
+          const title = String(bookmaker.title || "").toLowerCase();
 
-          const oneXbet =
-            bookmakers["1xbet"] ||
-            bookmakers["1xBet"] ||
-            bookmakers["1Xbet"];
+          const is1xBet =
+            key === "onexbet" ||
+            key === "1xbet" ||
+            title.includes("1xbet") ||
+            title.includes("1x bet");
 
-          const vbet =
-            bookmakers["Vbet"] ||
-            bookmakers["vbet"];
+          const isVbet =
+            key === "vbet" ||
+            title.includes("vbet");
 
-          if (!oneXbet || !vbet) continue;
+          if (!is1xBet && !isVbet) continue;
 
-          const oneXbetML = oneXbet.find(
-            market => market.name === "ML" || market.name === "Moneyline"
-          );
+          for (const market of bookmaker.markets || []) {
+            if (market.key !== "h2h") continue;
 
-          const vbetML = vbet.find(
-            market => market.name === "ML" || market.name === "Moneyline"
-          );
+            for (const outcome of market.outcomes || []) {
+              const price = Number(outcome.price);
+              if (!Number.isFinite(price) || price <= 1) continue;
 
-          if (!oneXbetML?.odds?.[0] || !vbetML?.odds?.[0]) continue;
+              const name = outcome.name;
 
-          const a = oneXbetML.odds[0];
-          const b = vbetML.odds[0];
+              if (!best[name]) {
+                best[name] = {
+                  outcome: name
+                };
+              }
 
-          const homeOdds = Math.max(
-            Number(a.home) || 0,
-            Number(b.home) || 0
-          );
+              if (is1xBet) {
+                if (
+                  !best[name].oneXBet ||
+                  price > best[name].oneXBet
+                ) {
+                  best[name].oneXBet = price;
+                }
+              }
 
-          const awayOdds = Math.max(
-            Number(a.away) || 0,
-            Number(b.away) || 0
-          );
-
-          if (homeOdds <= 1 || awayOdds <= 1) continue;
-
-          const arb = findArb([homeOdds, awayOdds]);
-
-          if (arb) {
-            results.push({
-              eventId: event.id,
-              sport: event.sport?.name || "Football",
-              league: event.league?.name || null,
-              home: event.home,
-              away: event.away,
-              date: event.date,
-              odds: [homeOdds, awayOdds],
-              arbitrage: arb
-            });
+              if (isVbet) {
+                if (
+                  !best[name].vbet ||
+                  price > best[name].vbet
+                ) {
+                  best[name].vbet = price;
+                }
+              }
+            }
           }
         }
 
-        return json({
-          ok: true,
-          count: results.length,
-          results
+        const outcomes = Object.values(best);
+
+        if (outcomes.length < 2) continue;
+
+        const selected = outcomes.map((o) => {
+          const prices = [
+            o.oneXBet,
+            o.vbet
+          ].filter(
+            (x) => Number.isFinite(x)
+          );
+
+          return {
+            outcome: o.outcome,
+            oneXBet: o.oneXBet ?? null,
+            vbet: o.vbet ?? null,
+            bestOdd: prices.length
+              ? Math.max(...prices)
+              : null
+          };
         });
 
-      } catch (error) {
-        return json({
-          ok: false,
-          error: error.message
-        }, 500);
+        const odds = selected.map((x) => x.bestOdd);
+
+        if (odds.some((x) => x === null)) continue;
+
+        const arbitrage = findArb(odds);
+
+        if (!arbitrage) continue;
+
+        opportunities.push({
+          eventId: event.id,
+          sport: event.sport_key,
+          commenceTime: event.commence_time,
+          homeTeam: event.home_team,
+          awayTeam: event.away_team,
+          outcomes: selected,
+          arbitrage
+        });
       }
+
+      return json({
+        ok: true,
+        sport,
+        bookmaker1: "1xBet",
+        bookmaker2: "Vbet",
+        count: opportunities.length,
+        opportunities
+      });
     }
 
     return new Response(`
-      <!doctype html>
-      <html lang="fa" dir="rtl">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>ArbScan</title>
-        <style>
-          body {
-            margin: 0;
-            font-family: Arial,sans-serif;
-            background: #0b1020;
-            color: white;
-          }
-          .container {
-            max-width: 900px;
-            margin: auto;
-            padding: 30px 20px;
-          }
-          .card {
-            background: #141c32;
-            border: 1px solid #293654;
-            border-radius: 18px;
-            padding: 25px;
-            margin-top: 20px;
-          }
-          .green { color: #55e58a; }
-          .muted { color: #9ca8c7; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>ArbScan</h1>
-          <p class="muted">سیستم بررسی فرصت‌های آربیتراژ ورزشی</p>
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width,initial-scale=1">
+<title>ArbScan</title>
+<style>
+body {
+  margin:0;
+  font-family:Arial,sans-serif;
+  background:#0b1020;
+  color:white;
+}
+.container {
+  max-width:900px;
+  margin:auto;
+  padding:30px 20px;
+}
+.card {
+  background:#141c32;
+  border:1px solid #293654;
+  border-radius:18px;
+  padding:25px;
+  margin-top:20px;
+}
+.green {
+  color:#55e58a;
+}
+.muted {
+  color:#9ca8c7;
+}
+button {
+  background:#55e58a;
+  color:#07120b;
+  border:0;
+  border-radius:10px;
+  padding:12px 18px;
+  font-weight:bold;
+  cursor:pointer;
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>ArbScan</h1>
+<p class="muted">
+سیستم بررسی فرصت‌های آربیتراژ ورزشی
+</p>
 
-          <div class="card">
-            <h2 class="green">● سیستم آنلاین</h2>
-            <p>Football</p>
-            <p>1xBet ↔ Vbet</p>
-            <p>Live API: Connected</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `, {
+<div class="card">
+<h2 class="green">● سیستم آنلاین</h2>
+<p>Football / Basketball / Handball / Ice Hockey</p>
+<p>1xBet ↔ Vbet</p>
+<button onclick="testApi()">بررسی فرصت‌ها</button>
+<pre id="result"></pre>
+</div>
+</div>
+
+<script>
+async function testApi() {
+  const result = document.getElementById("result");
+  result.textContent = "در حال دریافت اطلاعات...";
+
+  try {
+    const r = await fetch("/api/arbitrage?sport=football");
+    const data = await r.json();
+    result.textContent = JSON.stringify(data, null, 2);
+  } catch (e) {
+    result.textContent = "خطا: " + e.message;
+  }
+}
+</script>
+</body>
+</html>
+`, {
       headers: {
         "content-type": "text/html; charset=UTF-8"
       }
