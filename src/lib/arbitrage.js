@@ -1,11 +1,10 @@
-export function findArb(home1, away2) {
-  const inv = 1 / home1 + 1 / away2;
+export function findArb(odds) {
+  const inv = odds.reduce((sum, odd) => sum + 1 / odd, 0);
+
   if (inv >= 1) return null;
 
   return {
-    profit: ((1 / inv - 1) * 100).toFixed(2),
-    home: home1,
-    away: away2
+    margin: ((1 - inv) * 100).toFixed(2),
+    profit: ((1 / inv - 1) * 100).toFixed(2)
   };
 }
-
