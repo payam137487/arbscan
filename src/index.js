@@ -183,6 +183,7 @@ export default {
       }
 
       return json({
+        receivedBookmakers,
         ok: true,
         sport,
         bookmaker1: "1xBet",
